@@ -86,14 +86,14 @@ functions{
       // incidence
       epi_curves[t, 7] =
         t == 1 ?
-        inv_logit(alpha_incid_0 + alpha_incid_1 * logit(epi_curves[t, 5] + 1e-10)) :
-        inv_logit(alpha_incid_0 + alpha_incid_1 * logit(epi_curves[t, 5] - epi_curves[t-1, 5] + 1e-10));
+        epi_curves[t, 5] :
+        epi_curves[t, 5] - epi_curves[t-1, 5];
 
       // deaths
       epi_curves[t, 8] =
         t == 1 ?
-        log_rho_death + log_popsize + log(epi_curves[t, 6] + 1e-10) :
-        log_rho_death + log_popsize + log(epi_curves[t, 6] - epi_curves[t-1, 6] + 1e-10);
+        epi_curves[t, 6] + 1e-10 :
+        epi_curves[t, 6] - epi_curves[t-1, 6];
 
       // overdispersion parameters
       epi_curves[t,9] = kappa_incid;
@@ -204,9 +204,9 @@ functions{
     init_concs[1] = 1- init_fracs[1];
     init_concs[2] = exp(log(init_fracs[1]) + log1m(init_fracs[2]));
     init_concs[3] =
-      exp(log(init_fracs[1]) + log(init_fracs[2]) + log1m(init_fracs[3]));
-    init_concs[4] =
       exp(log(init_fracs[1]) + log(init_fracs[2]) + log(init_fracs[3]));
+    init_concs[4] =
+      exp(log(init_fracs[1]) + log(init_fracs[2]) + log1m(init_fracs[3]));
 
     // return concentrations
     return init_concs;
