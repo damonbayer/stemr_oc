@@ -79,7 +79,7 @@ functions{
               x_r[2:n_ode_times],
               params,
               x_r, x_i,
-              1e-12, 1e-12, 1e6);
+              1e-10, 1e-10, 1e6);
 
     // Calculate the emission parameters for incident cases and deaths
     for(t in 1:n_obs_times) {
@@ -159,7 +159,7 @@ functions{
               x_r[2:n_ode_times],
               params,
               x_r, x_i,
-              1e-12, 1e-12, 1e6);
+              1e-10, 1e-10, 1e6);
 
     // Calculate the adjusted binomial probs for incident cases and deaths
     for(t in 1:n_obs_times) {
@@ -389,7 +389,7 @@ generated quantities {
 
   // simulate from the posterior predictive
   for(j in 1:n_obs_pp) {
-
+//TODO: STILL NEED TO FIX THESE
     // incidence
     cases_pp[j] =
       beta_binomial_rng(
