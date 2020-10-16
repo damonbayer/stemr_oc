@@ -11,7 +11,7 @@ rstan_options(auto_write = TRUE)
 
 
 # Setup Stan --------------------------------------------------------------
-model_objects <- read_rds("~/Documents/stemr_oc/fixed_init_sim/model_objects.rds")
+model_objects <- read_rds("fixed_init_sim/model_objects.rds")
 model_objects_priors_only <- model_objects
 model_objects_priors_only$priors_only <- T
 model_objects_priors_only$forecast_in_days <- 0
@@ -65,11 +65,7 @@ state_initializer <-
     dist = "dirmultinom"
   )) # initial state fixed for simulation, we'll change this later
 
-# parameters <- numeric(10); names(parameters) <- c("beta", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa")
-parameters <- c(beta = 1.40951517189436e-07, gamma = 1.00205484766246, nu_early = 1.00047239762145,
-                mu_rec = 0.991220435483575, mu_death = 0.00590274654390186, rho_death = 0.822026217472393,
-                phi_death = 2.08767492297483, alpha0 = 57.1282936397807, alpha1 = 0.79420146357785,
-                kappa = 2.08114643628088)
+parameters <- numeric(10); names(parameters) <- c("beta", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa")
 constants <- c(t0 = 0)
 tcovar <- data.frame(time = obs_times,
                      tests = dat$new_tests)
@@ -116,7 +112,6 @@ measurement_process <-
                  select(t, cases = new_cases, deaths = new_deaths))
 
 stem_object <- make_stem(dynamics = dynamics, measurement_process = measurement_process)
-
 
 
 # Run Stan ----------------------------------------------------------------
@@ -202,18 +197,12 @@ stan_epi_curves <- prep_epi_curves(stan_results, model_objects) %>%
               pivot_longer(everything()) %>%
               mutate(value = value * model_objects$popsize) %>%
               mutate(time = 0, model = "stan"), .)
-init_fracs
-c(model_objects$frac_carrs, model_objects$frac_carrs_infec, model_objects$frac_infec_early)
 
+combined_epi_curves <- bind_rows(stemr_epi_curves, stan_epi_curves)
 
-stan_epi_curves %>%
-  filter(time == 0) %>%
-  select(name, value) %>%
-  deframe()
+write_rds(combined_epi_curves, "ode_solver_check_sim/combined_epi_curves.rds")
 
-init_states
-
-bind_rows(stemr_epi_curves, stan_epi_curves) %>%
+combined_epi_curves %>%
   ggplot(aes(time, value, group = model, color = model)) +
   geom_line(size = 1.25, alpha = 0.5) +
   facet_wrap(. ~ name, scales = "free_y")

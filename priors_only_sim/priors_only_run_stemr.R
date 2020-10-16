@@ -11,8 +11,7 @@ theme_set(cowplot::theme_cowplot())
 
 # Read Data ---------------------------------------------------------------
 dat <- read_rds("/Users/damon/Documents/uci_covid_modeling/code/SEIeIpRD/oc/2020-08-12_2020-09-16/model_objects.rds")$lumped_ochca_covid
-# popsize <- 3175692L
-# init_states <- c(S = 3012564L, E = 14866L, Ie = 20907L, Ip = 20590L, R = 106242L, D = 522L)
+
 init_states <- c(S = 3012564L, E = 14866L, Ie = 20907L, Ip = 20590L, R = 0L, D = 0L)
 popsize <- sum(init_states)
 
@@ -63,15 +62,12 @@ emissions <-
   list(emission(meas_var = "cases", # transition or compartment being measured (S->I transitions)
                 distribution    = "betabinomial",        # emission distribution
                 emission_params =
-                  c("tests",
-                    "kappa * (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1) / (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1 + (1 - Ie2Ip/popsize) ^ alpha1)",
-                    "kappa * ((1 - Ie2Ip/popsize) ^ alpha1) / (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1 + (1 - Ie2Ip/popsize) ^ alpha1)"), # distribution pars, here overdispersion and mean
+                  c("tests", "1", "1"),
                 incidence       = TRUE,                  # is the data incidence
                 obstimes        = obs_times), # vector of observation times
        emission(meas_var = "deaths",
                 distribution = "negbinomial",
-                emission_params = c("phi_death",
-                                    "rho_death * Ip2D"),
+                emission_params = c("1","1"),
                 incidence = T,
                 obstimes        = obs_times)) # vector of observation times)
 # list of emission distribution lists (analogous to rate specification)
@@ -221,38 +217,17 @@ multi_chain_stem_fit$n_iterations <- (iterations - mcmc_kern$parameter_blocks[[1
 # CHECK THIS
 multi_chain_stem_fit$thinning_interval <- thinning_interval
 
-method <- "ode"
-iterations <- 350000
-n_chains <- 4
-seed <- 1L
-plan(multisession, workers = 4)
 
-# multi_chain_stem_fit$stem_fit_list <- future_map(.x = 1:n_chains,
-#                                                  .options = future_options(packages = "stemr",
-#                                                                            seed = 20L,
-#                                                                            globals = c("stem_object", "method", "mcmc_kern", "iterations", "priors", "parameters", "popsize", "n_params")
-#                                                                            ),
-#                                                  .f = ~fit_stem(stem_object,
-#                                                                 method,
-#                                                                 mcmc_kern,
-#                                                                 iterations))
+multi_chain_stem_fit$stem_fit_list <- foreach(chain = 1:4,
+                                              .packages = "stemr",
+                                              .export = ls()) %dorng% {
 
-# Doesn't work. Try this
-# https://cran.r-project.org/web/packages/future/vignettes/future-4-non-exportable-objects.html
-# https://davisvaughan.github.io/furrr/articles/articles/carrier.html
+                                                fit_stem(stem_object = stem_object,
+                                                         method = "ode", # or "lna"
+                                                         mcmc_kern = mcmc_kern,
+                                                         iterations = 350000,
+                                                         thinning_interval = 100,
+                                                         print_progress = 1e3)
+                                                }
 
-ofw <- foreach(chain = 1:4,
-        .packages = "stemr",
-        .export = ls()) %dorng% {
-
-          fit_stem(stem_object = stem_object,
-                   method = "ode", # or "lna"
-                   mcmc_kern = mcmc_kern,
-                   iterations = 350000,
-                   thinning_interval = 100,
-                   print_progress = 1e3)
-        }
-
-multi_chain_stem_fit$stem_fit_list <- ofw
-write_rds(multi_chain_stem_fit, "~/Documents/stemr_oc/fixed_init_sim/multi_chain_stem_fit_R0D0.rds")
-# write_rds(multi_chain_stem_fit, "~/Documents/stemr_oc/fixed_init_sim/multi_chain_stem_fit.rds")
+write_rds(multi_chain_stem_fit, "priors_only_sim/priors_only_multi_chain_stem_fit.rds")

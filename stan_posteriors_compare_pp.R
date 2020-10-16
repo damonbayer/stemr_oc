@@ -1,6 +1,7 @@
 source('~/Documents/uci_covid_modeling/code/SEIeIpRD/plot_functions.R')
-# oc_post <- read_rds("fixed_init_sim/oc_post.rds")
-oc_post <- read_rds("fixed_init_sim/oc_prior.rds")
+oc_post <- read_rds("fixed_init_sim/oc_post.rds")
+# oc_post <- read_rds("fixed_init_sim/oc_prior.rds")
+# This prior isn't from fixed_inits
 model_objects <- read_rds("fixed_init_sim/model_objects.rds")
 
 oc_post_stan_params <- oc_post %>%
@@ -59,7 +60,7 @@ ggplot(aes(time, value, ymin = .lower, ymax = .upper, fill = model)) +
   guides(fill=guide_legend("pp simulation from")) +
   cowplot::theme_minimal_grid() +
   theme(legend.position = "bottom") +
-  # ggtitle("Predictives based on Stan Posteriors", subtitle = "95% CI") +
-  ggtitle("Predictives based on Stan Priors", subtitle = "95% CI") +
+  ggtitle("Predictives based on Stan Posteriors", subtitle = "95% CI") +
+  # ggtitle("Predictives based on Stan Priors", subtitle = "95% CI") +
   scale_y_continuous(labels = scales::comma)
 

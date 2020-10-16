@@ -4,7 +4,7 @@ library(extraDistr)
 theme_set(cowplot::theme_cowplot())
 
 # Read Data ---------------------------------------------------------------
-# dat <- read_rds("~/Documents/uci_covid_modeling/code/SEIeIpRD/oc/2020-08-12_2020-09-16/model_objects.rds")$lumped_ochca_covid
+dat <- read_rds("~/Documents/uci_covid_modeling/code/SEIeIpRD/oc/2020-08-12_2020-09-16/model_objects.rds")$lumped_ochca_covid
 
 model_objects_path <- NULL
 if (is.null(model_objects_path)) stop("please download this file and update model_objects_path\nhttps://github.com/vnminin/uci_covid_modeling/raw/master/code/SEIeIpRD/oc/2020-08-12_2020-09-16/model_objects.rds")
@@ -107,4 +107,4 @@ measurement_process <-
 
 stem_object <- make_stem(dynamics = dynamics, measurement_process = measurement_process)
 
-simulate_stem(stem_object = stem_object, method = "ode")
+tmp <- simulate_stem(stem_object = stem_object, method = "ode")
