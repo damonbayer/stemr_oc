@@ -12,11 +12,16 @@ source("~/Documents/uci_covid_modeling/code/SEIeIpRD/plot_functions.R")
 # stan_oc_post <- read_rds("~/Documents/uci_covid_modeling/code/SEIeIpRD/oc/2020-08-12_2020-09-16/oc_post.rds")
 # multi_chain_stem_fit <- read_rds("fixed_init_sim/multi_chain_stem_fit.rds")
 
-multi_chain_stem_fit <- read_rds("fixed_init_sim/multi_chain_stem_fit_R0D0.rds")
-stan_oc_post <- read_rds("fixed_init_sim/oc_post.rds")
-stan_oc_model_objects <- read_rds("fixed_init_sim/model_objects.rds")
-stan_oc_prior <- read_rds("fixed_init_sim/oc_prior.rds")
+# multi_chain_stem_fit <- read_rds("fixed_init_sim/multi_chain_stem_fit_R0D0.rds")
+# stan_oc_post <- read_rds("fixed_init_sim/oc_post.rds")
+# stan_oc_model_objects <- read_rds("fixed_init_sim/model_objects.rds")
+# stan_oc_prior <- read_rds("fixed_init_sim/oc_prior.rds")
 
+
+multi_chain_stem_fit <- read_rds("fixed_init_sim/multi_chain_stem_fit_R0D0_bugfix.rds")
+stan_oc_post <- read_rds("fixed_init_sim/oc_post_bugfix.rds")
+stan_oc_model_objects <- read_rds("fixed_init_sim/model_objects.rds")
+stan_oc_prior <- read_rds("fixed_init_sim/oc_prior_bugfix.rds")
 
 # prior_post_estim_scale_plot ---------------------------------------------
 stemr_post <- extract_stem_parameter_posterior(multi_chain_stem_fit) %>%
@@ -127,21 +132,35 @@ stemr_trace_plot <- extract_stem_parameter_posterior(multi_chain_stem_fit) %>%
 
 # Prevalence Curves -------------------------------------------------------
 stemr_epi_curves <- extract_epi_curves(multi_chain_stem_fit, curve_type = "p", tidy = T) %>%
-  filter(name %in% c("S", "E", "Ie", "Ip")) %>%
+  # filter(name %in% c("S", "E", "Ie", "Ip")) %>%
   select(time, name, value) %>%
   mutate(model = "stemr")
 
-stan_epi_curves <- prep_epi_curves(stan_oc_post, stan_oc_model_objects) %>%
-  rename(name = g_text,
-         value = epi_curves,
-         time = t) %>%
+
+stan_epi_curves <-
+prep_epi_curves(stan_oc_post, stan_oc_model_objects) %>%
+  pivot_wider( values_from = epi_curves, names_from = g_text) %>%
+  select(.draw, t, S, E, IE, IP, D) %>%
+  mutate(R = 1 - (S + E + IE + IP + D)) %>%
+  pivot_longer(-c(.draw, t)) %>%
+  rename(time = t) %>%
   ungroup() %>%
   mutate(time = as.numeric(time - min(time) + 3) / 7,
          name = str_to_title(name)) %>%
   filter(time %in% unique(stemr_epi_curves$time)) %>%
-  filter(name %in% unique(stemr_epi_curves$name)) %>%
-  mutate(value = value * stan_oc_model_objects$popsize) %>%
+  # filter(name %in% unique(stemr_epi_curves$name)) %>%
   select(time, name, value) %>%
+  bind_rows(spread_draws(stan_oc_post, `init_fracs[1]`, `init_fracs[2]`, `init_fracs[3]`) %>%
+              mutate(S = 1 - `init_fracs[1]`,
+                     E = exp(log(`init_fracs[1]`) + log(1 - `init_fracs[2]`)),
+                     Ie = exp(log(`init_fracs[1]`) + log(`init_fracs[2]`) + log(`init_fracs[3]`)),
+                     Ip = exp(log(`init_fracs[1]`) + log(`init_fracs[2]`) + log(1-`init_fracs[3]`)),
+                     R = 0,
+                     D = 0) %>%
+              select(-starts_with("init"), -starts_with(".")) %>%
+              pivot_longer(everything()) %>%
+              mutate(time = 0), .) %>%
+  mutate(value = value * stan_oc_model_objects$popsize) %>%
   mutate(name = fct_inorder(name),
          model = "stan")
 
