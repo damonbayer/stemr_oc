@@ -344,39 +344,50 @@ transformed parameters {
 model {
 
   // priors
-  log_R0     ~ normal(log_R0_normal[1], log_R0_normal[2]);
-  latent_dur ~ lognormal(latent_dur_lognormal[1], latent_dur_lognormal[2]);
-  early_dur  ~ lognormal(early_dur_lognormal[1], early_dur_lognormal[2]);
-  prog_dur   ~ lognormal(prog_dur_lognormal[1], prog_dur_lognormal[2]);
+  // log_R0     ~ normal(log_R0_normal[1], log_R0_normal[2]);
+  target +=  normal_lpdf(log_R0 | log_R0_normal[1], log_R0_normal[2]);
+
+  // latent_dur ~ lognormal(latent_dur_lognormal[1], latent_dur_lognormal[2]);
+  target += lognormal_lpdf(latent_dur | latent_dur_lognormal[1], latent_dur_lognormal[2]);
+
+  // early_dur  ~ lognormal(early_dur_lognormal[1], early_dur_lognormal[2]);
+  target += lognormal_lpdf(early_dur | early_dur_lognormal[1], early_dur_lognormal[2]);
+
+  // prog_dur   ~ lognormal(prog_dur_lognormal[1], prog_dur_lognormal[2]);
+  target += lognormal_lpdf(prog_dur | prog_dur_lognormal[1], prog_dur_lognormal[2]);
 
   // fraction progressing to clinical infection and death (+jacobian)
-  IFR ~ beta(IFR_beta[1], IFR_beta[2]);
+  // IFR ~ beta(IFR_beta[1], IFR_beta[2]);
+  target += beta_lpdf(IFR | IFR_beta[1], IFR_beta[2]);
 
   // initial concentrations + jacobian adjustment
-  frac_carrs       ~ beta(frac_carrs_beta[1], frac_carrs_beta[2]);
-  frac_carrs_infec ~ beta(frac_carrs_infec_beta[1], frac_carrs_infec_beta[2]);
-  frac_infec_early ~ beta(frac_infec_early_beta[1], frac_infec_early_beta[2]);
+  // frac_carrs       ~ beta(frac_carrs_beta[1], frac_carrs_beta[2]);
+  // target += beta_lpdf(frac_carrs | frac_carrs_beta[1], frac_carrs_beta[2]);
+
+  // frac_carrs_infec ~ beta(frac_carrs_infec_beta[1], frac_carrs_infec_beta[2]);
+  // target += beta_lpdf(frac_carrs | frac_carrs_beta[1], frac_carrs_beta[2]);
+
+  // frac_infec_early ~ beta(frac_infec_early_beta[1], frac_infec_early_beta[2]);
+  // target += beta_lpdf(frac_infec_early | frac_infec_early_beta[1], frac_infec_early_beta[2]);
 
   // underreporting params
-  alpha_incid_0        ~ normal(alpha_incid_0_normal[1], alpha_incid_0_normal[2]) T[0, ];
-  alpha_incid_1        ~ beta(alpha_incid_1_beta[1], alpha_incid_1_beta[2]);
-  sqrt_kappa_inv_incid ~ exponential(sqrt_kappa_inv_incid_exponential);
+  // alpha_incid_0        ~ normal(alpha_incid_0_normal[1], alpha_incid_0_normal[2]) T[0, ];
+  target += alpha_incid_0 < 0 ? negative_infinity() : (-normal_lccdf(0 | alpha_incid_0_normal[1], alpha_incid_0_normal[2]) + normal_lpdf(alpha_incid_0 | alpha_incid_0_normal[1], alpha_incid_0_normal[2]));
 
-  rho_death ~ beta(rho_death_beta[1], rho_death_beta[2]);
-  sqrt_phi_inv_death ~ exponential(sqrt_phi_inv_death_exponential);
+  // alpha_incid_1        ~ beta(alpha_incid_1_beta[1], alpha_incid_1_beta[2]);
+  target += beta_lpdf(alpha_incid_1 | alpha_incid_1_beta[1], alpha_incid_1_beta[2]);
 
-  // likelihood
-  // vector map_rect((vector, vector, real[], int[]):vector f,
-  //                  vector phi, vector[] thetas,
-  //                  data real[ , ] x_rs, data int[ , ] x_is);
-  // in each iteration of map_rect;
-  // vector[k] colvec; a column vector
-  // row_vector[k] rowvec; a row vector
-  // theta[i] is a vector of length n_elem1
-  // x_rs[i] is an array of length n_elem2
-  // vector res = f(phi, theta[i], x_rs[i], x_is[i]);
-   if (!priors_only) {
-  target += sum(map_rect(seir_loglik, phi, theta, x_r, x_i));
+  // sqrt_kappa_inv_incid ~ exponential(sqrt_kappa_inv_incid_exponential);
+  target += exponential_lpdf(sqrt_kappa_inv_incid | sqrt_kappa_inv_incid_exponential);
+
+  // rho_death ~ beta(rho_death_beta[1], rho_death_beta[2]);
+  target += beta_lpdf(rho_death | rho_death_beta[1], rho_death_beta[2]);
+
+  // sqrt_phi_inv_death ~ exponential(sqrt_phi_inv_death_exponential);
+  target += exponential_lpdf(sqrt_phi_inv_death | sqrt_phi_inv_death_exponential);
+
+  if (!priors_only) {
+    target += sum(map_rect(seir_loglik, phi, theta, x_r, x_i));
    }
 }
 
