@@ -258,6 +258,9 @@ data {
 }
 
 transformed data {
+  // population size
+  int popsize_r = x_i[1, 2 + 3 * (num_per - 1) - 1];
+  real log_popsize = log(popsize_r);
 
   // relative infectiousness in clinical and subclinical stages
   // don't forget to change in ODEs if changing here
@@ -389,18 +392,18 @@ generated quantities {
 
   // simulate from the posterior predictive
   for(j in 1:n_obs_pp) {
-//TODO: STILL NEED TO FIX THESE
+
     // incidence
     cases_pp[j] =
       beta_binomial_rng(
         tests[j],
-        epi_curves[rho_incid_inds[j]] * epi_curves[kappa_incid_inds[j]],
-        (1 - epi_curves[rho_incid_inds[j]]) * epi_curves[kappa_incid_inds[j]]);
+        inv_logit(alpha_incid_0 + alpha_incid_1 * logit(epi_curves[rho_incid_inds[j]])) * epi_curves[kappa_incid_inds[j]],
+        (1 - inv_logit(alpha_incid_0 + alpha_incid_1 * logit(epi_curves[rho_incid_inds[j]]))) * epi_curves[kappa_incid_inds[j]]);
 
     // deaths
     deaths_pp[j] =
       neg_binomial_2_log_rng(
-        epi_curves[log_mu_death_inds[j]],
+        log(rho_death) + log_popsize + log(epi_curves[log_mu_death_inds[j]]),
         epi_curves[phi_death_inds[j]]);
   }
 }
