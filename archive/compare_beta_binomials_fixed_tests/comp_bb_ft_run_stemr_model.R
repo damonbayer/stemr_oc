@@ -11,6 +11,8 @@ theme_set(cowplot::theme_cowplot())
 
 # Read Data ---------------------------------------------------------------
 dat <- read_rds("~/Documents/uci_covid_modeling/code/SEIeIpRD/oc/2020-08-12_2020-09-16/model_objects.rds")$lumped_ochca_covid
+dat$new_tests <- as.integer(mean(dat$new_tests))
+
 init_states <- c(S = 3012564L, E = 14866L, Ie = 20907L, Ip = 20590L, R = 0L, D = 0L)
 popsize <- sum(init_states)
 
@@ -65,13 +67,7 @@ emissions <-
                     "kappa * (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1) / (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1 + (1 - Ie2Ip/popsize) ^ alpha1)",
                     "kappa * ((1 - Ie2Ip/popsize) ^ alpha1) / (exp(alpha0) * (Ie2Ip / popsize) ^ alpha1 + (1 - Ie2Ip/popsize) ^ alpha1)"), # distribution pars, here overdispersion and mean
                 incidence       = TRUE,                  # is the data incidence
-                obstimes        = obs_times), # vector of observation times
-       emission(meas_var = "deaths",
-                distribution = "negbinomial",
-                emission_params = c("phi_death",
-                                    "rho_death * Ip2D"),
-                incidence = T,
-                obstimes        = obs_times)) # vector of observation times)
+                obstimes        = obs_times))
 # list of emission distribution lists (analogous to rate specification)
 
 dynamics <-
@@ -133,7 +129,7 @@ from_estimation_scale = function(params_est) {
 
 logprior =
   function(params_est) {
-    sum(dnorm(params_est["R0_est"], -0.25, 0.7, log = TRUE), # log(R0)
+    sum(dnorm(params_est["R0_est"], -0.2554128198465173693599, 0.7, log = TRUE), # log(R0)
         dnorm(-params_est["dur_latent_est"], 0, 0.22, log = TRUE), # -log(dur_latent)
         dnorm(-params_est["dur_early_est"], 0, 0.22, log = TRUE), # -log(dur_early)
         dnorm(-params_est["dur_progress_est"], 0, 0.22, log = TRUE), # -log(dur_progress)
@@ -228,5 +224,4 @@ multi_chain_stem_fit$stem_fit_list <- foreach(chain = 1:4,
                                                          thinning_interval = 100,
                                                          print_progress = 1e3)
                                               }
-
-write_rds(multi_chain_stem_fit, "fixed_init_sim/fixed_init_multi_chain_stem_fit.rds")
+write_rds(multi_chain_stem_fit, "compare_beta_binomials_fixed_tests/fixed_init_multi_chain_stem_fit.rds")

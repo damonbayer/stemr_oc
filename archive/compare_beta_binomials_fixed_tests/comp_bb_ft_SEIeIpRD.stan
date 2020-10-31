@@ -185,10 +185,11 @@ functions{
         x_i[1:n_obs_times] |
           x_i[(1 + n_obs_times):(2 * n_obs_times)],
           kappa_incid * rho_incid,
-          kappa_incid * (1 - rho_incid)) +
-       neg_binomial_2_log_lpmf(
-        x_i[(1 + 2 * n_obs_times):(3 * n_obs_times)] |
-          log_mu_death, phi_death));
+          kappa_incid * (1 - rho_incid))
+        //   + neg_binomial_2_log_lpmf(
+        // x_i[(1 + 2 * n_obs_times):(3 * n_obs_times)] |
+        //   log_mu_death, phi_death)
+          );
 
     return loglik;
   }
@@ -393,6 +394,19 @@ model {
 
 generated quantities {
 
+  real data_log_lik = sum(map_rect(seir_loglik, phi, theta, x_r, x_i));
+
+  real params_log_prior = normal_lpdf(log_R0 | log_R0_normal[1], log_R0_normal[2]) +
+  lognormal_lpdf(latent_dur | latent_dur_lognormal[1], latent_dur_lognormal[2]) +
+  lognormal_lpdf(early_dur | early_dur_lognormal[1], early_dur_lognormal[2]) +
+  lognormal_lpdf(prog_dur | prog_dur_lognormal[1], prog_dur_lognormal[2]) +
+  beta_lpdf(IFR | IFR_beta[1], IFR_beta[2]) +
+  alpha_incid_0 < 0 ? negative_infinity() : (-normal_lccdf(0 | alpha_incid_0_normal[1], alpha_incid_0_normal[2]) + normal_lpdf(alpha_incid_0 | alpha_incid_0_normal[1], alpha_incid_0_normal[2])) +
+  beta_lpdf(alpha_incid_1 | alpha_incid_1_beta[1], alpha_incid_1_beta[2]) +
+  exponential_lpdf(sqrt_kappa_inv_incid | sqrt_kappa_inv_incid_exponential) +
+  beta_lpdf(rho_death | rho_death_beta[1], rho_death_beta[2]) +
+  exponential_lpdf(sqrt_phi_inv_death | sqrt_phi_inv_death_exponential);
+
   // epi curves (S, E, I, N_EI, Y_pred)
   real cases_pp[n_obs_pp];
   real deaths_pp[n_obs_pp];
@@ -417,5 +431,5 @@ generated quantities {
         log(rho_death) + log_popsize + log(epi_curves[log_mu_death_inds[j]]),
         epi_curves[phi_death_inds[j]]);
   }
-}
 
+}

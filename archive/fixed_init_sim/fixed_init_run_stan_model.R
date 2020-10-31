@@ -44,4 +44,4 @@ oc_prior <- stan(file = "~/Documents/stemr_oc/fixed_init_sim/SEIeIpRD.stan",
                  chains = 4,
                  control = control_list)
 
-write_rds(oc_prior, "fixed_init_sim/oc_prior.rds")
+write_rds(oc_prior, "fixed_init_sim/oc_prior_tmp.rds")

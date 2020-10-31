@@ -83,3 +83,29 @@ plot_epi_curves <- function(multi_chain_stem_fit, curve_type = "p") {
     facet_wrap(. ~ name, scales = "free_y") +
     scale_fill_brewer()
 }
+to_estimation_scale = function(params_nat) {
+  c(R0_est = log(params_nat[["beta"]]) + log(popsize) + log(1 / params_nat[["nu_early"]] + 0.8 / (params_nat[["mu_rec"]] + params_nat[["mu_death"]])), # log(R0)
+    dur_latent_est = log(params_nat[["gamma"]]), # -log(dur_latent)
+    dur_early_est = log(params_nat[["nu_early"]]), # -log(dur_early)
+    dur_progress_est = log(params_nat[["mu_rec"]] + params_nat[["mu_death"]]), # -log(dur_progress)
+    ifr_est = log(params_nat[["mu_death"]]) - log(params_nat[["mu_rec"]]), # logit(ifr)
+    rho_death_est = logit(params_nat[["rho_death"]]), # logit(rho_death)
+    phi_death_est = -0.5 * log(params_nat[["phi_death"]]), # -0.5 * log(phi_death)
+    alpha0_est = log(params_nat[["alpha0"]]), # log(alpha0)
+    alpha1_est = logit(params_nat[["alpha1"]]), # logit(alpha1)
+    kappa_est = -0.5 * log(params_nat[["kappa"]])) # -0.5 * log(kappa)
+}
+
+
+from_estimation_scale = function(params_est) {
+  c(beta = exp(params_est[["R0_est"]] - log(popsize) - log(exp(-params_est[["dur_early_est"]]) + 0.8 * exp(-params_est[["dur_progress_est"]]))),
+    gamma = exp(params_est[["dur_latent_est"]]),
+    nu_early = exp(params_est[["dur_early_est"]]),
+    mu_rec = exp(params_est[["dur_progress_est"]]) / (1 + exp(params_est[["ifr_est"]])),
+    mu_death = exp(params_est[["dur_progress_est"]]) / (1 + exp(-params_est[["ifr_est"]])),
+    rho_death = expit(params_est[["rho_death_est"]]),
+    phi_death = exp(-2 * params_est[["phi_death_est"]]),
+    alpha0 = exp(params_est[["alpha0_est"]]),
+    alpha1 = expit(params_est[["alpha1_est"]]),
+    kappa = exp(-2 * params_est[["kappa_est"]]))
+}

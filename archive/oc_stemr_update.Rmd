@@ -2,7 +2,7 @@
 title: "OC Stemr Update"
 author: "Damon Bayer"
 date: "10/19/2020"
-output: html_document
+output: pdf_document
 ---
 
 ```{r setup, include=FALSE}
@@ -11,9 +11,14 @@ library(stemr)
 library(coda)
 library(tidyverse)
 library(cowplot)
+library(scales)
 source("stemr_functions.R")
 source("~/Documents/uci_covid_modeling/code/SEIeIpRD/plot_functions.R")
 theme_set(theme_cowplot())
+fixed_init_multi_chain_stem_fit <- read_rds("~/Documents/stemr_oc/fixed_init_sim/fixed_init_multi_chain_stem_fit.rds")
+stan_oc_post <- read_rds("~/Documents/stemr_oc/fixed_init_sim/oc_post.rds")
+model_objects <- read_rds("fixed_init_sim/model_objects.rds")
+stan_oc_model_objects <- read_rds("fixed_init_sim/model_objects.rds")
 ```
 
 
@@ -116,8 +121,6 @@ stem_object <- make_stem(dynamics = dynamics, measurement_process = measurement_
 # Overview
 
 ```{r}
-model_objects <- read_rds("fixed_init_sim/model_objects.rds")
-
 oc_post_stemr_params <- map(fixed_init_multi_chain_stem_fit$stem_fit_list,
 function(stem_fit) {
   stem_fit$results$posterior$parameter_samples_nat %>%
@@ -190,7 +193,7 @@ stan_prior <- read_rds("fixed_init_sim/oc_prior.rds") %>%
   mutate(model = "stan", type = "prior")
 ```
 
-```{r}
+```{r Prior Post Parameters}
 bind_rows(stemr_prior, stemr_post, stan_prior, stan_post) %>%
   unite(type, model, col = "source") %>%
   pivot_longer(-source) %>%
@@ -207,9 +210,61 @@ bind_rows(stemr_prior, stemr_post, stan_prior, stan_post) %>%
   guides(colour = guide_legend(reverse = T))
 ```
 
+
+
 Stan and Stemr Priors agree, while the Posteriors disagree to varying levels. Kappa and R0 are especially concerning.
 
-SHOULD ALSO SHOW EPI CURVES
+```{r}
+stemr_epi_curves <- extract_epi_curves(read_rds("fixed_init_sim/fixed_init_multi_chain_stem_fit.rds"), curve_type = "p", tidy = T) %>%
+  # filter(name %in% c("S", "E", "Ie", "Ip")) %>%
+  select(time, name, value) %>%
+  mutate(model = "stemr")
+
+
+stan_epi_curves <-
+prep_epi_curves(read_rds("fixed_init_sim/oc_post.rds"), model_objects) %>%
+  pivot_wider( values_from = epi_curves, names_from = g_text) %>%
+  select(.draw, t, S, E, IE, IP, D) %>%
+  mutate(R = 1 - (S + E + IE + IP + D)) %>%
+  pivot_longer(-c(.draw, t)) %>%
+  rename(time = t) %>%
+  ungroup() %>%
+  mutate(time = as.numeric(time - min(time) + 3) / 7,
+         name = str_to_title(name)) %>%
+  filter(time %in% unique(stemr_epi_curves$time)) %>%
+  # filter(name %in% unique(stemr_epi_curves$name)) %>%
+  select(time, name, value) %>%
+  bind_rows(spread_draws(stan_oc_post, `init_fracs[1]`, `init_fracs[2]`, `init_fracs[3]`) %>%
+              mutate(S = 1 - `init_fracs[1]`,
+                     E = exp(log(`init_fracs[1]`) + log(1 - `init_fracs[2]`)),
+                     Ie = exp(log(`init_fracs[1]`) + log(`init_fracs[2]`) + log(`init_fracs[3]`)),
+                     Ip = exp(log(`init_fracs[1]`) + log(`init_fracs[2]`) + log(1-`init_fracs[3]`)),
+                     R = 0,
+                     D = 0) %>%
+              select(-starts_with("init"), -starts_with(".")) %>%
+              pivot_longer(everything()) %>%
+              mutate(time = 0), .) %>%
+  mutate(value = value * stan_oc_model_objects$popsize) %>%
+  mutate(name = fct_inorder(name),
+         model = "stan")
+
+
+bind_rows(stemr_epi_curves, stan_epi_curves) %>%
+  group_by(name, model, time) %>%
+  median_qi() %>%
+  ggplot(aes(time, value, ymin = .lower, ymax = .upper, fill = model, color = model, group = model)) +
+  facet_wrap(.~name, scale = "free_y") +
+  # facet_grid(name ~ model, scale = "free_y") +
+  geom_lineribbon(alpha = 0.5) +
+  ylab("People") +
+  scale_y_continuous(labels = comma) +
+  ggtitle("Prevalence Curves for Stan and Stemr") +
+  theme(legend.position = "bottom")
+```
+
+Substantial differences in E, Ie, and Ip compartments.
+
+\pagebreak
 
 # ODE Solver Check
 
@@ -222,6 +277,8 @@ combined_epi_curves %>%
 ```
 
 Here, I give stemr and stan the same parameter values and solve the ODEs. Results are indistinguishable.
+
+\pagebreak
 
 # Prior Predictives
 ```{r}
@@ -313,7 +370,6 @@ plot_pos_stemr_stan <- function(stemr_rds, stan_rds, title = "Preds") {
 }
 ```
 
-
 ```{r}
 prior_death_pred_plot <- plot_death_stemr_stan(stemr_rds = "priors_only_sim/priors_only_multi_chain_stem_fit.rds", stan_rds = "fixed_init_sim/oc_prior.rds", "Prior Predictive")
 prior_death_pred_plot
@@ -321,7 +377,9 @@ prior_death_pred_plot
 prior_pos_pred_plot <- plot_pos_stemr_stan(stemr_rds = "priors_only_sim/priors_only_multi_chain_stem_fit.rds", stan_rds = "fixed_init_sim/oc_prior.rds", "Prior Predictive")
 prior_pos_pred_plot
 ```
+Prior predictives are indistinguishable.
 
+\pagebreak
 
 # Posterior Predictives
 
@@ -332,6 +390,10 @@ post_death_pred_plot
 post_pos_pred_plot <- plot_pos_stemr_stan(stemr_rds = "fixed_init_sim/fixed_init_multi_chain_stem_fit.rds", stan_rds = "fixed_init_sim/oc_post.rds", "Posterior Predictive")
 post_pos_pred_plot
 ```
-From the previous plots, stemr has higher log(1 / sqrt(kappa)) so "more overdispersion" which is exactly what we see here.
+
+Stemr positivity  has more overdispersion, which agrees with the earlier plot showing `log(1 / sqrt(kappa))` being higher in stemr than stan.
+
 
 # Stemr Sampler
+
+I achieved similar results with the slice sampler and the metropolis hasings sampler.
