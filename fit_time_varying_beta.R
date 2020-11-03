@@ -9,6 +9,7 @@ library(tidyverse)
 oc_data <-
   read_csv(
     "/Users/damon/Documents/uci_covid_modeling/data/oc_data.csv",
+    # "oc_data.csv",
     col_types = cols(
       X1 = col_skip(),
       posted_date = col_date(format = "%Y-%m-%d"),
@@ -137,7 +138,7 @@ foi_rw1 <- function(parameters, draws, log_pop = log_popsize) {
     log_R0_t[t] <- log_R0_t[t - 1] + draws[t - 1] * parameters["sigma"]
   }
 
-  exp(log_R0_t - log_pop + log(parameters["mu"]))
+  exp(log_R0_t - log_pop - log(1 / parameters[["nu_early"]] + 0.8 / (parameters[["mu_rec"]] + parameters[["mu_death"]])))
 }
 
 tparam <-
@@ -190,7 +191,7 @@ emissions <-
 
 measurement_process <- stem_measure(emissions = emissions,
                                     dynamics = dynamics,
-                                    data = dat)
+                                    data = select(dat, -tests))
 
 stem_object <-
   make_stem(dynamics = dynamics, measurement_process = measurement_process)
@@ -291,31 +292,20 @@ mcmc_kern <-
 
 registerDoParallel(cores = future::availableCores())
 
-tmp <- fit_stem(stem_object = stem_object,
-         method = "ode", # or "lna"
-         mcmc_kern = mcmc_kern,
-         iterations = 1e5,
-         print_progress = 1e3)
+n_chains <- 4
+thinning_interval <- 100
+iterations <- 350000
 
 res <- foreach(chain = 1:4,
                .packages = "stemr",
                .export = ls()) %dorng% {
-                 print("hi")
                  fit_stem(stem_object = stem_object,
                           method = "ode", # or "lna"
                           mcmc_kern = mcmc_kern,
-                          iterations = 1e5,
+                          iterations = iterations,
+                          thinning_interval = thinning_interval,
                           print_progress = 1e3)
                }
 
-multi_chain_stem_fit$stem_fit_list <- foreach(chain = 1:4,
-                                              .packages = "stemr",
-                                              .export = ls()) %dorng% {
 
-                                                fit_stem(stem_object = stem_object,
-                                                         method = "ode", # or "lna"
-                                                         mcmc_kern = mcmc_kern,
-                                                         iterations = iterations,
-                                                         thinning_interval = thinning_interval,
-                                                         print_progress = 1e3)
-                                              }
+write_rds(res, paste0("res_", format(Sys.time(), "%Y_%m_%d_%H_%M_%S"), ".rds"))

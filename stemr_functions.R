@@ -109,3 +109,39 @@ from_estimation_scale = function(params_est) {
     alpha1 = expit(params_est[["alpha1_est"]]),
     kappa = exp(-2 * params_est[["kappa_est"]]))
 }
+
+
+gather_array <- function(a, value, ..., .id=NULL){
+  qs <- rlang::quos(...)
+  if (missing(value)) {
+    evalue <- rlang::sym("var")}
+  else {
+    evalue <- rlang::enquo(value)
+  }
+  len <- length(qs)
+  d <- dim(a)
+
+  # Default Values
+  if (len > 0) {
+    dimnames <- purrr::map(qs, rlang::quo_name) %>%
+      as_vector()
+  } else {
+    dimnames <- paste0("dim_", 1:length(d))
+  }
+
+  l <- list()
+  for (i in 1:length(d)){
+    l[[i]] <- 1:d[i]
+  }
+  names(l) <- dimnames
+  tidy <- expand.grid(l)
+  tidy[[rlang::quo_name(evalue)]] <- a[as.matrix(tidy)]
+  if (!is.null(.id)) tidy[[.id]] <- rlang::expr_name(a)
+  return(tidy)
+}
+
+split_along_dim <- function(a, n){
+  setNames(lapply(split(a, arrayInd(seq_along(a), dim(a))[, n]),
+                  array, dim = dim(a)[-n], dimnames(a)[-n]),
+           dimnames(a)[[n]])
+}
