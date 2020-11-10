@@ -26,7 +26,8 @@ extract_stem_parameter_posterior <- function(multi_chain_stem_fit, transform = "
         } else {
           parameter_samples <- t(apply(stem_fit$results$posterior$parameter_samples_est, 1, transform))
         }
-        mcmc(parameter_samples, start = 100, end = 200000, thin = 100)}) %>%
+        # mcmc(parameter_samples, start = 100, end = 200000, thin = 100)}) %>%
+        mcmc(parameter_samples)}) %>%
     as.mcmc.list()
 }
 

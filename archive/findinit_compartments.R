@@ -134,3 +134,42 @@ stemr_post_samples %>% mutate(.iteration = row_number()) %>%
   ggplot(aes(.iteration, value)) +
   facet_wrap(. ~ name, scales = "free_y") +
   geom_line()
+
+
+
+
+# For second sim ----------------------------------------------------------
+
+initial_fit <- list()
+initial_fit$n_iterations <- 3000
+initial_fit$stem_fit_list <- readRDS("~/Documents/stemr_oc/res_2020_11_02_12_56_25.rds")
+
+
+epi_curves_p <- extract_epi_curves(multi_chain_stem_fit = initial_fit, curve_type = "p", tidy = T)
+
+min(lumped_oc_data$start_date) - 1
+
+seq(min(lumped_oc_data$start_date) - 1, max(lumped_oc_data$end_date), by = 7)
+
+
+seq(lubridate::ymd("2020-03-19"), lubridate::ymd("2020-10-15"), by = 7)
+
+target <- epi_curves_p %>%
+  mutate(date = lubridate::ymd("2020-03-19") + time * 7) %>%
+  filter(date == "2020-06-18") %>%
+  select(.draw, name, value) %>%
+  pivot_wider(names_from = name, values_from = value) %>%
+  select(-.draw) %>%
+  as.matrix() %>%
+  round()
+
+target[,1] <- popsize - rowSums(target[,-1])
+
+init_states <- round(colMeans(target))
+
+# Maximize likelihood
+C <- optimize(f = function(C) sum(ddirmnom(x = round(target), size = popsize, alpha = init_states / C, log = T)), lower = 1, upper = 10000, maximum = T)$maximum
+
+dput(init_states)
+dput(C)
+

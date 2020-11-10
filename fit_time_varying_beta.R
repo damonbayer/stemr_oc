@@ -40,7 +40,7 @@ lump_oc_data <-
     arrange(start_date)
 }
 
-lumped_oc_data <- lump_oc_data(oc_data, time_interval_in_days = 7, first_day = "2020-03-15", last_day = "2020-10-15")
+lumped_oc_data <- lump_oc_data(oc_data, time_interval_in_days = 7, first_day = "2020-03-14", last_day = "2020-10-16")
 
 dat <- lumped_oc_data %>%
   mutate(time = as.numeric((end_date - min(start_date) + 1L) / 7)) %>%
@@ -92,11 +92,14 @@ rates <-
   )
 
 init_infected <-
-  sum(oc_data$new_cases[oc_data$date <= "2020-03-14"]) * 10
+  sum(oc_data$new_cases[oc_data$date <= "2020-03-14"]) * 30
 
 init_states <-
   c(popsize - init_infected, lengths(parallel::splitIndices(init_infected, 3)), 0, 0) %>%
   `names<-`(compartments)
+
+# init_states <- c(S = 3021872, E = 5886, Ie = 5320, Ip = 6202, R = 29199, D = 447)
+
 
 state_initializer <-
   list(
@@ -104,6 +107,7 @@ state_initializer <-
       init_states = init_states,
       fixed = F,
       prior = init_states / 10,
+      # prior = init_states / 713.627357866896,
       dist = "dirmultinom"
     )
   )
@@ -114,7 +118,7 @@ tcovar <- dat %>% select(time, tests)
 
 parameters <-
   c(
-    log_R0_init = log(2),
+    R0_init = 2,
     gamma = 1,
     nu_early = 1,
     mu_rec = 0.94,
@@ -132,7 +136,7 @@ tmax <- max(obs_times)
 
 foi_rw1 <- function(parameters, draws, log_pop = log_popsize) {
   log_R0_t <- numeric(length = length(draws))
-  log_R0_t[1] <- parameters["log_R0_init"]
+  log_R0_t[1] <- log(parameters["R0_init"])
 
   for (t in 2:(length(log_R0_t))) {
     log_R0_t[t] <- log_R0_t[t - 1] + draws[t - 1] * parameters["sigma"]
@@ -199,7 +203,7 @@ stem_object <-
 
 parameters <-
   c(
-    log_R0_init = log(2),
+    R0_init = 2,
     gamma = 1,
     nu_early = 1,
     mu_rec = 0.94,
@@ -214,7 +218,7 @@ parameters <-
 
 # Need to account for sigma
 to_estimation_scale = function(params_nat) {
-  c(log_R0_init_est = params_nat[["log_R0_init"]],
+  c(R0_init_est = log(params_nat[["R0_init"]]), # log(R0_init)
     dur_latent_est = log(params_nat[["gamma"]]), # -log(dur_latent)
     dur_early_est = log(params_nat[["nu_early"]]), # -log(dur_early)
     dur_progress_est = log(params_nat[["mu_rec"]] + params_nat[["mu_death"]]), # -log(dur_progress)
@@ -229,7 +233,7 @@ to_estimation_scale = function(params_nat) {
 
 # Need to account for sigma
 from_estimation_scale = function(params_est) {
-  c(log_R0_init = params_est[["log_R0_init_est"]],
+  c(R0_init = exp(params_est[["R0_init_est"]]),
     gamma = exp(params_est[["dur_latent_est"]]),
     nu_early = exp(params_est[["dur_early_est"]]),
     mu_rec = exp(params_est[["dur_progress_est"]]) / (1 + exp(params_est[["ifr_est"]])),
@@ -245,7 +249,7 @@ from_estimation_scale = function(params_est) {
 # Need to account for sigma
 logprior =
   function(params_est) {
-    sum(dnorm(params_est["log_R0_init_est"], -0.2554128198465173693599, 0.7, log = TRUE), # log(R0)
+    sum(dnorm(params_est["R0_init_est"], -0.2554128198465173693599, 0.7, log = TRUE), # log(R0)
         dnorm(-params_est["dur_latent_est"], 0, 0.22, log = TRUE), # -log(dur_latent)
         dnorm(-params_est["dur_early_est"], 0, 0.22, log = TRUE), # -log(dur_early)
         dnorm(-params_est["dur_progress_est"], 0, 0.22, log = TRUE), # -log(dur_progress)
@@ -274,9 +278,9 @@ mcmc_kern <-
   mcmc_kernel(
     parameter_blocks =
       list(parblock(
-        pars_nat = c("log_R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa", "sigma"),
+        pars_nat = c("R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa", "sigma"),
         # par_est should have different names from pars_nat
-        pars_est = c("log_R0_init_est", "dur_latent_est", "dur_early_est", "dur_progress_est", "ifr_est", "rho_death_est", "phi_death_est", "alpha0_est", "alpha1_est", "kappa_est", "sigma_est"),
+        pars_est = c("R0_init_est", "dur_latent_est", "dur_early_est", "dur_progress_est", "ifr_est", "rho_death_est", "phi_death_est", "alpha0_est", "alpha1_est", "kappa_est", "sigma_est"),
         priors = priors,
         alg = "mvnss",
         sigma = diag(0.01, n_params),
