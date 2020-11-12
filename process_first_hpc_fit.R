@@ -1,7 +1,10 @@
+library(stemr)
 library(tidyverse)
 library(tidybayes)
 library(scales)
 library(coda)
+library(cowplot)
+library(extraDistr)
 source('~/Documents/stemr_oc/stemr_functions.R')
 multi_chain_stem_fit <- list()
 multi_chain_stem_fit$n_iterations <- 3000
@@ -10,7 +13,11 @@ multi_chain_stem_fit$n_iterations <- 3000
 # multi_chain_stem_fit$stem_fit_list <- readRDS("~/Documents/stemr_oc/res_2020_11_03_12_14_06.rds") # just the tail
 # multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_05_16_18_06.rds") # correct data, double initial counts
 # multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_05_17_31_55.rds") # correct data, triple initial counts
-multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_06_13_53_57.rds") # correct data, quadruple initial counts
+# multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_06_13_53_57.rds") # correct data, quadruple initial counts
+# multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_10_13_53_47.rds") # fixed sigma 0.05 triple initial counts
+# multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_10_14_44_57.rds") # fixed sigma 0.05 quadruple initial counts
+# multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_10_15_56_53.rds") # fixed sigma 0.1 quadruple initial counts
+multi_chain_stem_fit$stem_fit_list <- read_rds("res_2020_11_10_18_04_44.rds") # fixed sigma 0.2 quadruple initial counts
 
 n_chains <- 4
 thinning_interval <- 100
@@ -22,6 +29,20 @@ log_popsize <- log(popsize)
 # Epi Curves --------------------------------------------------------------
 epi_curves_p <- extract_epi_curves(multi_chain_stem_fit = multi_chain_stem_fit, curve_type = "p", tidy = T)
 
+# Separate By Chain
+epi_curves_p %>%
+  filter(time %in% c(0,1)) %>%
+  group_by(.chain, time, name) %>%
+  select(value) %>%
+  median_qi(.width = c(0.5, 0.8, 0.95)) %>%
+  ggplot(aes(time, value, ymin = .lower, ymax = .upper, group = name)) +
+  geom_lineribbon() +
+  facet_grid(name ~ .chain, scales = "free_y") +
+  scale_fill_brewer() +
+  scale_y_continuous(labels = comma) +
+  cowplot::theme_minimal_hgrid() +
+  theme(legend.position = "none")
+
 epi_curves_p %>%
   filter(time %in% c(0,1)) %>%
   group_by(time, name) %>%
@@ -29,11 +50,11 @@ epi_curves_p %>%
   median_qi(.width = c(0.5, 0.8, 0.95)) %>%
   ggplot(aes(time, value, ymin = .lower, ymax = .upper, group = name)) +
   geom_lineribbon() +
-  facet_wrap(. ~ name, scales = "free_y") +
+  facet_grid(. ~ name, scales = "free_y") +
   scale_fill_brewer() +
   scale_y_continuous(labels = comma) +
-  cowplot::theme_minimal_hgrid()
-# kinda sus
+  cowplot::theme_minimal_hgrid() +
+  theme(legend.position = "none")
 
 
 # Beta_t ------------------------------------------------------------------
@@ -62,15 +83,14 @@ library(EpiEstim)
 
 Rt_plot <- ggplot() +
   geom_lineribbon(data = tmp_beta_t %>%
-                    select(time, Rt) %>%
-                    group_by(time) %>%
+                    select(.chain, time, Rt) %>%
+                    group_by(.chain, time) %>%
+                    # select(time, Rt) %>%
+                    # group_by(time) %>%
                     median_qi(.width = c(0.5, 0.8, 0.95)),
                   mapping = aes(time, Rt, ymin = .lower, ymax = .upper)) +
+  facet_wrap(. ~ .chain) +
   scale_fill_brewer() +
-  geom_line(data = epi_estim_output_3_15_10_15$R %>%
-              as_tibble() %>%
-              mutate(time = t_start / 7, Rt = `Mean(R)`) %>%
-              select(time, Rt), aes(time, Rt), color = "red") +
   cowplot::theme_minimal_hgrid() +
   ggtitle("Stemr vs epiestim?")
 
@@ -124,7 +144,8 @@ stemr_params <- map(multi_chain_stem_fit$stem_fit_list,
                                 stem_fit$results$posterior$parameter_samples_nat,
                                 stem_fit$results$posterior$initdist_samples) %>%
                                 split(., row(.)) %>%
-                                map(~`names<-`(.,c("log_R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa", "sigma", "S_0", "E_0", "Ie_0", "Ip_0", "R_0", "D_0")))
+                                # map(~`names<-`(.,c("log_R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa", "sigma", "S_0", "E_0", "Ie_0", "Ip_0", "R_0", "D_0")))
+                              map(~`names<-`(.,c("log_R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa", "S_0", "E_0", "Ie_0", "Ip_0", "R_0", "D_0")))
                             }) %>%
   unlist(recursive = F)
 
@@ -254,6 +275,7 @@ handmade_plot <- ggplot() +
   ggtitle("Posterior Predictive & Real Data (by hand)") +
   theme(legend.position = "none")
 
+handmade_plot
 
 pp_dat_tail_only <- cowplot::plot_grid(stemr_plot, handmade_plot, nrow = 2, ncol = 1, align = "hv")
 cowplot::save_plot(plot = pp_dat_tail_only, filename = "~/Desktop/pp_dat_tail_only.pdf", nrow = 2, ncol = 2)

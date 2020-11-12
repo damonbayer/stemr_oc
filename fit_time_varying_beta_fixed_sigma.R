@@ -4,9 +4,6 @@ library(foreach)
 library(doRNG)
 library(doParallel)
 library(tidyverse)
-library(tidybayes)
-source('~/Documents/stemr_oc/stemr_functions.R')
-my_sigma <- 0.2
 
 # Load Data ---------------------------------------------------------------
 oc_data <-
@@ -30,18 +27,18 @@ lump_oc_data <-
            first_day = "0000-01-01",
            last_day = "9999-12-31") {
     oc_data %>%
-      filter(date >= lubridate::ymd(first_day),
-             date <= lubridate::ymd(last_day)) %>%
-      group_by(lump = as.integer(floor((max(date) - date) / time_interval_in_days))) %>%
-      filter(n() == time_interval_in_days) %>%
-      summarize(start_date = min(date),
-                end_date = max(date),
-                new_cases = sum(new_cases),
-                new_tests = sum(new_tests),
-                new_deaths = sum(new_deaths)) %>%
-      dplyr::select(-lump) %>%
-      arrange(start_date)
-  }
+    filter(date >= lubridate::ymd(first_day),
+           date <= lubridate::ymd(last_day)) %>%
+    group_by(lump = as.integer(floor((max(date) - date) / time_interval_in_days))) %>%
+    filter(n() == time_interval_in_days) %>%
+    summarize(start_date = min(date),
+              end_date = max(date),
+              new_cases = sum(new_cases),
+              new_tests = sum(new_tests),
+              new_deaths = sum(new_deaths)) %>%
+    dplyr::select(-lump) %>%
+    arrange(start_date)
+}
 
 lumped_oc_data <- lump_oc_data(oc_data, time_interval_in_days = 7, first_day = "2020-03-14", last_day = "2020-10-16")
 
@@ -56,7 +53,7 @@ log_popsize <- log(popsize)
 
 
 # Build Model -------------------------------------------------------------
-# set.seed(12511)
+set.seed(12511)
 strata <- NULL
 compartments <- c("S", "E", "Ie", "Ip", "R", "D")
 
@@ -95,7 +92,7 @@ rates <-
   )
 
 init_infected <-
-  sum(oc_data$new_cases[oc_data$date <= "2020-03-14"]) * 30
+  sum(oc_data$new_cases[oc_data$date <= "2020-03-14"]) * 40
 
 init_states <-
   c(popsize - init_infected, lengths(parallel::splitIndices(init_infected, 3)), 0, 0) %>%
@@ -130,7 +127,7 @@ parameters <-
     kappa = 2.2
   )
 
-constants <- c(t0 = 0, sigma = my_sigma)
+constants <- c(t0 = 0, sigma = 0.05)
 tmax <- max(obs_times)
 
 foi_rw1 <- function(parameters, draws, log_pop = log_popsize) {
@@ -199,6 +196,35 @@ measurement_process <- stem_measure(emissions = emissions,
 stem_object <-
   make_stem(dynamics = dynamics, measurement_process = measurement_process)
 
+
+parameters <-
+  c(
+    R0_init = 2,
+    gamma = 1,
+    nu_early = 1,
+    mu_rec = 0.94,
+    mu_death = 0.06,
+    rho_death = 0.7,
+    phi_death = 2.2,
+    alpha0 = 4,
+    alpha1 = 0.8,
+    kappa = 2.2
+  )
+
+to_estimation_scale = function(params_nat) {
+  c(R0_init_est = log(params_nat[["R0_init"]]), # log(R0_init)
+    dur_latent_est = log(params_nat[["gamma"]]), # -log(dur_latent)
+    dur_early_est = log(params_nat[["nu_early"]]), # -log(dur_early)
+    dur_progress_est = log(params_nat[["mu_rec"]] + params_nat[["mu_death"]]), # -log(dur_progress)
+    ifr_est = log(params_nat[["mu_death"]]) - log(params_nat[["mu_rec"]]), # logit(ifr)
+    rho_death_est = logit(params_nat[["rho_death"]]), # logit(rho_death)
+    phi_death_est = -0.5 * log(params_nat[["phi_death"]]), # -0.5 * log(phi_death)
+    alpha0_est = log(params_nat[["alpha0"]]), # log(alpha0)
+    alpha1_est = logit(params_nat[["alpha1"]]), # logit(alpha1)
+    kappa_est = -0.5 * log(params_nat[["kappa"]])) # -0.5 * log(kappa)
+}
+
+# Need to account for sigma
 from_estimation_scale = function(params_est) {
   c(R0_init = exp(params_est[["R0_init_est"]]),
     gamma = exp(params_est[["dur_latent_est"]]),
@@ -212,91 +238,69 @@ from_estimation_scale = function(params_est) {
     kappa = exp(-2 * params_est[["kappa_est"]]))
 }
 
-set.seed(200)
-simulation_parameters_est <- rerun(.n = 2000, {
-  c(R0_init_est = rnorm(1, -0.2554128198465173693599, 0.7),
-    dur_latent_est = -rnorm(1, 0, 0.22),
-    dur_early_est = -rnorm(1, 0, 0.22),
-    dur_progress_est = -rnorm(1, 0, 0.22),
-    ifr_est = logit(rbeta(1, 1.5, 200)),
-    rho_death_est = logit(rbeta(1, 8, 2)),
-    phi_death_est = -2 * log(rexp(1, 1)),
-    alpha0_est = log(rtnorm(1, mean = 4, sd = 2, a = 0)),
-    alpha1_est = logit(rbeta(1, 3, 1)),
-    kappa_est = -2 * log(rexp(1, 1)^2))
-})
-
-tparam_draws <- map(simulation_parameters_est, ~list(foi_rw1(parameters = from_estimation_scale(.), draws = rnorm(31))))
-# simulation_parameters <- map(simulation_parameters_est, ~c(from_estimation_scale(.), tail(stem_object$dynamics$parameters, 6)))
-simulation_parameters <- map(simulation_parameters_est, from_estimation_scale)
-
-prior_pred <- simulate_stem(stem_object = stem_object,
-                            nsim = 2000,
-                            simulation_parameters = simulation_parameters,
-                            tparam_draws = tparam_draws,
-                            method = "ode", paths = F)
-
-
-{
-  beta_t <- map(tparam_draws, pluck(1)) %>% unlist() %>% array(dim = c(31, 1, length(tparam_draws)))
-  nu_early <- map_dbl(simulation_parameters, "nu_early")
-  mu_death <- map_dbl(simulation_parameters, "mu_death")
-  mu_rec <- map_dbl(simulation_parameters, "mu_rec")
-}
-
-rt_tmp <-
-  exp(log(beta_t) + log_popsize + rep(log(1 / nu_early + 0.8 / (mu_rec + mu_death)), each = dim(beta_t)[2])) %>%
-  gather_array(value = value, time, var, .iteration) %>%
-  as_tibble() %>%
-  select(-var) %>%
-  mutate(time = time - 1) %>%
-  mutate(.chain = 1) %>%
-  mutate(.draw = tidybayes:::draw_from_chain_and_iteration_(.chain, .iteration)) %>%
-  left_join(prior_pred$natural_paths %>%
-              do.call(what = rbind, args = .) %>%
-              as_tibble() %>%
-              mutate(.chain = 1,
-                     .iteration = rep(1:2000, each = length(unique(time))),
-                     .draw = tidybayes:::draw_from_chain_and_iteration_(.chain, .iteration)) %>%
-              mutate(prop_s = S / popsize) %>%
-              select(time, .iteration, .chain, .draw, prop_s)) %>%
-  mutate(Rt = value * prop_s)
-
-# Plot betas
-# rt_tmp %>%
-#   select(time, value) %>%
-#   group_by(time) %>%
-#   median_qi(.width = c(0.5, 0.8, 0.95)) %>%
-#   ggplot(aes(time, value, ymin = .lower, ymax = .upper)) +
-#   geom_lineribbon() +
-#   geom_hline(yintercept = 0.2, color = "red") +
-#   scale_fill_brewer() +
-#   theme_minimal()
-
-rt_plot_020 <- {
-ggplot() +
-  geom_lineribbon(
-    data = rt_tmp %>%
-      select(time, Rt) %>%
-      group_by(time) %>%
-      median_qi(.width = c(0.5, 0.8, 0.95)),
-    mapping = aes(time, Rt, ymin = .lower, ymax = .upper)) +
-  geom_line(data = rt_tmp %>%
-              filter(.iteration %in% sample(2000, 12)),
-            mapping = aes(time, Rt, group = .iteration)) +
-  geom_hline(yintercept = c(0.2, 4), color = "red") +
-  scale_fill_brewer() +
-  theme_minimal() +
-  scale_y_log10() +
-  theme(legend.position = "none") +
-  ggtitle(str_c("Sigma = ", my_sigma))
+# Need to account for sigma
+logprior =
+  function(params_est) {
+    sum(dnorm(params_est["R0_init_est"], -0.2554128198465173693599, 0.7, log = TRUE), # log(R0)
+        dnorm(-params_est["dur_latent_est"], 0, 0.22, log = TRUE), # -log(dur_latent)
+        dnorm(-params_est["dur_early_est"], 0, 0.22, log = TRUE), # -log(dur_early)
+        dnorm(-params_est["dur_progress_est"], 0, 0.22, log = TRUE), # -log(dur_progress)
+        dbeta(expit(params_est["ifr_est"]), 1.5, 200, log = TRUE) + params_est["ifr_est"] - 2 * log(exp(params_est["ifr_est"]) + 1), # logit(ifr)
+        dbeta(expit(params_est["rho_death_est"]), 8, 2, log = TRUE) + params_est["rho_death_est"] - 2 * log(exp(params_est["rho_death_est"]) + 1) , # logit(rho_death)
+        dexp(exp(params_est["phi_death_est"]), 1, log = TRUE) +  params_est["phi_death_est"], # -0.5 * log(phi_death)
+        dtnorm(exp(params_est["alpha0_est"]), mean = 4, sd = 2, a = 0, log = TRUE) + params_est["alpha0_est"], # log(alpha0)
+        dbeta(expit(params_est["alpha1_est"]), 3, 1, log = TRUE) + params_est["alpha1_est"] - 2 * log(exp(params_est["alpha1_est"]) + 1), # logit(alpha1)
+        dexp(exp(params_est["kappa_est"]), 1, log = T) +  params_est["kappa_est"]) # -0.5 * log(kappa)
   }
 
-rt_plot_005 + scale_y_log10(limits = c(0.05, 5))
+priors <-
+  list(logprior = logprior,
+       to_estimation_scale = to_estimation_scale,
+       from_estimation_scale = from_estimation_scale)
 
-rt_plot_020 + scale_y_log10(limits = c(0.025, 40))
+n_params <- length(parameters)
 
-cowplot::plot_grid(rt_plot_005 + scale_y_log10(limits = c(0.025, 40)),
-                   rt_plot_010 + scale_y_log10(limits = c(0.025, 40)),
-                   rt_plot_015 + scale_y_log10(limits = c(0.025, 40)),
-                   rt_plot_020 + scale_y_log10(limits = c(0.025, 40)), align = "hv")
+par_initializer = function() {
+  priors$from_estimation_scale(priors$to_estimation_scale(parameters) +
+                                 rnorm(n_params, 0, 0.1))
+}
+
+mcmc_kern <-
+  mcmc_kernel(
+    parameter_blocks =
+      list(parblock(
+        pars_nat = c("R0_init", "gamma", "nu_early", "mu_rec", "mu_death", "rho_death", "phi_death", "alpha0", "alpha1", "kappa"),
+        # par_est should have different names from pars_nat
+        pars_est = c("R0_init_est", "dur_latent_est", "dur_early_est", "dur_progress_est", "ifr_est", "rho_death_est", "phi_death_est", "alpha0_est", "alpha1_est", "kappa_est"),
+        priors = priors,
+        alg = "mvnss",
+        sigma = diag(0.01, n_params),
+        initializer = par_initializer,
+        control =
+          mvnss_control(stop_adaptation = 50000,
+                        scale_cooling = 0.85,
+                        scale_constant = 1,
+                        step_size = 0.25))),
+    lna_ess_control = lna_control(bracket_update_iter = 5e3,
+                                  joint_initdist_update = FALSE),
+    tparam_ess_control = tpar_control(bracket_update_iter = 1e4))
+
+registerDoParallel(cores = future::availableCores())
+
+n_chains <- 4
+thinning_interval <- 100
+iterations <- 350000
+
+res <- foreach(chain = 1:4,
+               .packages = "stemr",
+               .export = ls()) %dorng% {
+                 fit_stem(stem_object = stem_object,
+                          method = "ode", # or "lna"
+                          mcmc_kern = mcmc_kern,
+                          iterations = iterations,
+                          thinning_interval = thinning_interval,
+                          print_progress = 1e3)
+               }
+
+
+write_rds(res, paste0("res_", format(Sys.time(), "%Y_%m_%d_%H_%M_%S"), ".rds"))
