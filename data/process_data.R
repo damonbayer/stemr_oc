@@ -1,6 +1,12 @@
 library(rms)
 library(tidyverse)
-cases_age_lag <- 14
+library(lubridate)
+
+# Setup -------------------------------------------------------------------
+snf_omit <- F
+cases_age_lag <- 18
+deaths_csv <- "data/11.9.20 release to UCI team.csv"
+neg_line_list_csv <- "data/All ELR PCR tests updated 11.9.20.csv"
 
 negative_test_synonyms <- c("not detected",
                             "negative",
@@ -82,16 +88,39 @@ other_test_synonyms <- c("inconclusive",
                          "acinetobacter baumannii (organism)"
 )
 
-new_deaths_tbl <- read_csv("data/11.9.20 release to UCI team.csv",
-         col_types = cols(.default = col_skip(),
-                          `DtDeath` = col_date("%Y-%m-%d"),
-                          `DeathDueCOVID` = col_character())) %>%
+
+# IFR Model ---------------------------------------------------------------
+nature_dat <-  tibble(age = c(2, 7, 12, 17, 22, 27, 32, 37, 42, 47, 52, 57, 62, 67, 72, 77, 85),
+                      ifr = c(3e-05, 1e-05, 1e-05, 3e-05, 6e-05, 0.00013, 0.00024, 4e-04,
+                              0.00075, 0.00121, 0.00207, 0.00323, 0.00456, 0.01075, 0.01674,
+                              0.03203, 0.08292))
+
+nature_dat_model <- glm(formula = ifr ~ age, family = gaussian(link = "logit"), data = nature_dat)
+
+tibble(age = seq(0,90,5)) %>%
+  mutate(., ifr = predict(nature_dat_model, newdata = ., type = "response")) %>%
+  ggplot(aes(age, ifr)) +
+  geom_line() +
+  geom_point() +
+  scale_y_log10(label = scales::percent)
+
+
+
+# Read Data ---------------------------------------------------------------
+new_deaths_tbl <-
+  read_csv(deaths_csv,
+           col_types = cols(.default = col_skip(),
+                            `HighRisk` = col_character(),
+                            `DtDeath` = col_date("%Y-%m-%d"),
+                            `DeathDueCOVID` = col_character())) %>%
+  replace_na(list(HighRisk = "No")) %>%
   filter(DeathDueCOVID == "Y") %>%
+  when(snf_omit ~ filter(., !str_detect(HighRisk, "Resident")),
+       ~ .) %>%
   select(date = DtDeath) %>%
   count(date, name = "deaths")
 
-
-neg_line_list <- read_csv("data/All ELR PCR tests updated 11.9.20.csv",
+neg_line_list <- read_csv(neg_line_list_csv,
                           col_types = cols(.default = col_skip(),
                                            Age = col_double(),
                                            PersonId = col_integer(),
@@ -108,8 +137,10 @@ neg_line_list <- read_csv("data/All ELR PCR tests updated 11.9.20.csv",
   arrange(date) %>%
   ungroup()
 
-if(length(levels(neg_line_list$test_result)) != 3) warning("New test result category not accounted for.")
+if(length(levels(neg_line_list$test_result)) != 3) stop("New test result category not accounted for.")
 
+
+# Process Data ------------------------------------------------------------
 first_pos <- neg_line_list %>%
   filter(test_result == "positive") %>%
   group_by(id) %>%
@@ -121,18 +152,23 @@ neg_line_list_filtered <- left_join(neg_line_list, first_pos) %>%
   select(-first_pos) %>%
   distinct()
 
-
-dat_for_age_model <- neg_line_list %>%
+dat_for_ifr_model <- neg_line_list %>%
   filter(test_result == "positive") %>%
   filter(date >= "2020-03-14",
          date <= max(neg_line_list[["date"]]) - 14) %>%
   select(date, age) %>%
+  mutate(., ifr = predict(nature_dat_model, newdata = ., type = "response")) %>%
   mutate(date = as.numeric(date))
 
-rcs_model <- ols(age ~ rcs(date,
-                      quantile(date, c(0, .05, .25, .5, .75, .95, 1),
-                               include.lowest = TRUE)),
-            data = dat_for_age_model)
+rcs_model_ifr <- ols(ifr ~ rcs(date,
+                               # quantile(date, c(.05, .23, .41, .59, .77, 0.95))),
+                               quantile(date, c(.025, .1833, .3417, .5, .6583, .8167, .975))),
+                     data = dat_for_ifr_model %>% drop_na())
+
+
+ggplot(final_dat, aes(date, lagged_pos_ifr)) +
+  geom_line() +
+  scale_x_date(limits = c(ymd("2020-03-01"), max(final_dat$date)))
 
 
 final_dat <- neg_line_list_filtered %>%
@@ -144,8 +180,10 @@ final_dat <- neg_line_list_filtered %>%
   replace(is.na(.), 0) %>%
   mutate(cases = positive,
          tests = negative + positive + other,
-         lagged_pos_age = predict(rcs_model,
-                                  newdata = tibble(date = as.numeric(date) - cases_age_lag))) %>%
-  select(date, deaths, cases, tests, lagged_pos_age)
+         lagged_pos_ifr = unname(predict(rcs_model_ifr,
+                                  newdata = tibble(date = as.numeric(date) - cases_age_lag)))) %>%
+  select(date, deaths, cases, tests, lagged_pos_ifr)
 
-write_rds(final_dat, "data/oc_data.rds")
+if(snf_omit) write_rds(final_dat, "data/oc_data_no_snf.rds")
+if(!snf_omit) write_rds(final_dat, "data/oc_data.rds")
+

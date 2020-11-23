@@ -31,7 +31,7 @@ lump_oc_data <-
            date <= lubridate::ymd(last_day)) %>%
     group_by(lump = as.integer(floor((max(date) - date) / time_interval_in_days))) %>%
     filter(n() == time_interval_in_days) %>%
-    summarize(start_date = min(date),
+    dplyr::summarize(start_date = min(date),
               end_date = max(date),
               new_cases = sum(new_cases),
               new_tests = sum(new_tests),
@@ -40,7 +40,7 @@ lump_oc_data <-
     arrange(start_date)
 }
 
-lumped_oc_data <- lump_oc_data(oc_data, time_interval_in_days = 7, first_day = "2020-03-14", last_day = "2020-10-16")
+lumped_oc_data <- lump_oc_data(oc_data, time_interval_in_days = 7, first_day = "2020-03-30", last_day = "2020-10-11")
 
 dat <- lumped_oc_data %>%
   mutate(time = as.numeric((end_date - min(start_date) + 1L) / 7)) %>%
@@ -92,7 +92,7 @@ rates <-
   )
 
 init_infected <-
-  sum(oc_data$new_cases[oc_data$date <= "2020-03-14"]) * 40
+  sum(oc_data$new_cases[oc_data$date <= "2020-03-30"]) * 40
 
 init_states <-
   c(popsize - init_infected, lengths(parallel::splitIndices(init_infected, 3)), 0, 0) %>%
