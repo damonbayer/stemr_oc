@@ -33,38 +33,37 @@ extract_stem_parameter_posterior <- function(multi_chain_stem_fit, transform = "
 
 
 # extract_epi_curves ------------------------------------------------------
-# Probably a faster way to write this
 extract_epi_curves <- function(multi_chain_stem_fit, curve_type = "prevalence", tidy = F) {
   if (curve_type == "prevalence") curve_type <- "p"
   if (curve_type == "incidence") curve_type <- "i"
   if (curve_type %notin% c("i", "p")) stop('curve_type must be one of "i", "incidence", "p", or "prevalence"')
-  if (!is.logical(tidy)) stop('tidy myust be TRUE or FALSE')
+  if (!is.logical(tidy)) stop('tidy must be TRUE or FALSE')
 
   epi_curves <- imap_dfr(multi_chain_stem_fit$stem_fit_list, function(stem_fit, chain) {
+    latent_paths_list <- split_along_dim(stem_fit$result$posterior$latent_paths, 3)
 
-    map_dfr(1:multi_chain_stem_fit$n_iterations, function(i) {
-      if (curve_type == "p") {
-        if (stem_fit$dynamics$fixed_inits) {
-          init_state <- stem_fit$dynamics$initdist_params
-        } else {
-          init_state <- stem_fit$result$posterior$initdist_samples[i,]
-        }
-        path <- incidence2prevalence(path = stem_fit$result$posterior$latent_paths[,,i],
-                                     flow_matrix = stem_fit$dynamics$flow_matrix_ode,
-                                     init_state = init_state)
-      } else {
-        path <- stem_fit$result$posterior$latent_paths[,,i]
-      }
+    if (stem_fit$dynamics$fixed_inits) {
+      init_dist_sample_list <- rep(list(stem_fit$dynamics$initdist_params), multi_chain_stem_fit$n_iterations)
+    } else {
+      init_dist_sample_list <- split_along_dim(stem_fit$results$posterior$initdist_samples, 1)
+    }
 
-      path %>%
-        as_tibble() %>%
-        mutate(.iteration = i)
-    }) %>%
-      mutate(.chain = chain)
-  }) %>%
-    group_by(time) %>%
-    mutate(.draw = row_number()) %>%
-    ungroup()
+    if (curve_type == "i") {
+      path_df <- map_dfr(latent_paths_list, as_tibble)
+    } else {
+      path_df <- map2(.x = latent_paths_list, .y = init_dist_sample_list, .f =
+                        ~incidence2prevalence(path = .x,
+                                              flow_matrix = stem_fit$dynamics$flow_matrix_ode,
+                                              init_state = .y)) %>%
+        map_dfr(as_tibble)
+    }
+
+    path_df <- mutate(path_df, .iteration = rep(1:multi_chain_stem_fit$n_iterations, each = nrow(path_df) / multi_chain_stem_fit$n_iterations))
+    path_df
+  } %>%
+    mutate(.chain = chain)
+  ) %>%
+    mutate(.draw = tidybayes:::draw_from_chain_and_iteration_(chain = .chain, iteration = .iteration))
 
   if (tidy == T) {
     epi_curves <- epi_curves %>%
@@ -145,4 +144,28 @@ split_along_dim <- function(a, n){
   setNames(lapply(split(a, arrayInd(seq_along(a), dim(a))[, n]),
                   array, dim = dim(a)[-n], dimnames(a)[-n]),
            dimnames(a)[[n]])
+}
+
+dataset_to_list <- function(dat) {
+  dat <- as.matrix(dat)
+  time <- dat[,1]
+  dat_na <- is.na(dat[,-1])
+  unique_na_structure <- unique(dat_na, MARGIN = 2)
+
+  assignments <- apply(dat_na, 2, function(x) which(apply(unique_na_structure, 2, function(y) isTRUE(all.equal(x, y)))))
+
+  dat_list <- list()
+  for (i in 1:length(unique(assignments))) {
+    dat_list[[i]] <- dat[!unique_na_structure[,i], c(1, which(assignments == i) + 1)]
+  }
+  dat_list
+}
+
+named_group_split <- function(.tbl, ...) {
+  grouped <- group_by(.tbl, ...)
+  names <- rlang::eval_bare(rlang::expr(paste(!!!group_keys(grouped), sep = " / ")))
+
+  grouped %>%
+    group_split(.keep = F) %>%
+    rlang::set_names(names)
 }
