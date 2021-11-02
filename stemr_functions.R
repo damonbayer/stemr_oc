@@ -169,3 +169,16 @@ named_group_split <- function(.tbl, ...) {
     group_split(.keep = F) %>%
     rlang::set_names(names)
 }
+
+
+extract_init_dist_posterior <- function(multi_chain_stem_fit) {
+  imap_dfr(multi_chain_stem_fit$stem_fit_list,
+           ~{
+             .x$results$posterior$initdist_samples %>%
+               as_tibble() %>%
+               rename_all(~str_sub(string = ., end = -3)) %>%
+               mutate(.chain = .y,
+                      .iteration = row_number())}
+  ) %>%
+    mutate(.draw = tidybayes:::draw_from_chain_and_iteration_(chain = .chain, iteration = .iteration))
+}

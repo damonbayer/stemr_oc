@@ -39,6 +39,9 @@ vignettes/*.pdf
 *.rds
 Images
 
-data/11.9.20 release to UCI team.csv
 
-data/All ELR PCR tests updated 11.9.20.csv
+/final_models/forecast_results
+/final_models/sub
+/final_models/results
+/ISBA_2021
+/MIDAS_2021

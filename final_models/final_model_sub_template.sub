@@ -1,0 +1,14 @@
+#!/bin/bash
+#SBATCH --job-name=JOBNAMEHERE
+#SBATCH -p standard   ## run on the standard partition
+#SBATCH -A vminin_lab ## account to charge
+#SBATCH -N 1          ## run on a single node
+#SBATCH -n 1          ## request 4 tasks (4 CPUs)
+#SBATCH -t 336:00:00   ## 24 hr run time limit
+#SBATCH --mail-type=begin,end
+#SBATCH --mail-user=bayerd@uci.edu
+
+module load R/4.0.2
+cd stemr_oc/final_models
+
+R CMD BATCH --no-save '--args arg1 arg2' fit_stemr_final_template.R
