@@ -80,6 +80,23 @@ tparam_draws <- list(c(-0.0480564342976278, -0.0480564342976278, -0.048056434297
 stem_object$dynamics$initdist_params <- stem_object$dynamics$initdist_priors <- stem_object$dynamics$initializer[[1]]$init_states <- stem_object$dynamics$initializer[[1]]$prior <- init_dist
 set.seed(1)
 
+simulation_parameters[["phi_death"]] <- exp(5.4)
+simulation_parameters[["kappa"]] <- exp(7.0)
+
+simulate_stem(stem_object = stem_object,
+              nsim = 1,
+              simulation_parameters = list(simulation_parameters),
+              tparam_draws = list(tparam_draws),
+              paths = F,
+              method = "ode")$natural_paths[[1]][,c("S", "E", "I", "R", "D")]
+
+simulate_stem(stem_object = stem_object,
+              nsim = 1,
+              simulation_parameters = list(simulation_parameters),
+              tparam_draws = list(tparam_draws),
+              paths = F,
+              method = "ode")$paths[[1]][,c("E2I", "I2D")]
+
 simulate_data <- function() {
   simulate_stem(stem_object = stem_object,
                 nsim = 1,
@@ -90,7 +107,7 @@ simulate_data <- function() {
 }
 
 tmp <-
-  rerun(.n = 100, simulate_data()) %>%
+  rerun(.n = 1000, simulate_data()) %>%
   map_dfr(~as_tibble(.) %>% mutate(seroprev_cases = ifelse(time == 20, seroprev_cases, NA))) %>%
   mutate(data = "simulated") %>%
   bind_rows(multi_chain_stem_fit$data %>%

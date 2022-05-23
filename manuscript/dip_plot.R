@@ -185,10 +185,22 @@ prevalence_plot <-
   ggtitle("Posterior Latent\nPrevalence") +
   guides(color = guide_legend(title = "Credibility", reverse = T))
 
+
+dip_plot <- plot_grid(cumulative_deaths_plot,
+                      cumulative_incidence_plot,
+                      prevalence_plot,
+                      align = "hv", ncol = 1, nrow = 3)
+
+save_plot(filename = "~/Desktop/dip_plot.pdf",
+          plot = dip_plot,
+          ncol = 1,
+          nrow = 3, base_asp = 3.75, base_height = 3.75)
+
 dip_plot <- plot_grid(cumulative_deaths_plot,
                       cumulative_incidence_plot,
                       prevalence_plot,
                       align = "hv", ncol = 3, nrow = 1)
+
 
 save_plot(filename = "~/Documents/oc_covid19_stemr_manuscript/figures/dip_plot.pdf",
           plot = dip_plot,
